@@ -793,13 +793,6 @@ Here are 20 sample natural language questions you can ask after connecting a dat
 
 ---
 
-## 👥 Contributors
-
-**Tharun M**  
-*AI/ML & Full Stack Developer*  
-[GitHub](https://github.com/tharunm) · [LinkedIn](https://linkedin.com/in/tharunm)
-
----
 
 ## 📄 License
 
