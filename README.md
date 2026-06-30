@@ -173,59 +173,7 @@ AI SQL Assistant bridges the gap between natural language and database queries. 
 
 ## 🏗️ System Architecture
 
-```mermaid
-graph TB
-    subgraph Frontend["React Frontend (TypeScript + Tailwind)"]
-        UI[User Interface]
-        Cache[SessionStorage Cache]
-        ReactFlow[React Flow ER Diagram]
-    end
-
-    subgraph Backend["FastAPI Backend (Python)"]
-        API[API Layer]
-        Auth[JWT Authentication]
-        Schema[Schema Discovery Service]
-        Viz[Schema Visualization Service]
-        SQLG[SQL Generation Pipeline]
-        Validator[SQL Validator - SQLGlot]
-        Executor[Query Executor]
-    end
-
-    subgraph CacheLayer["Redis Cache Layer"]
-    SC["Schema Cache | schema:{id} | TTL: 3600s"]
-    ST["Status Cache | status:{id} | TTL: 60s"]
-    end
-
-    subgraph AILayer["OpenAI GPT"]
-        LLM[GPT-5.1-Codex-Mini]
-    end
-
-    subgraph Database["Customer PostgreSQL"]
-        PG[(PostgreSQL Database)]
-    end
-
-    subgraph AppDB["Application Database"]
-        AppPG[(PostgreSQL - asyncpg)]
-    end
-
-    UI --> API
-    API --> Auth
-    API --> Schema
-    API --> Viz
-    API --> SQLG
-    SQLG --> Schema
-    SQLG --> Validator
-    SQLG --> LLM
-    SQLG --> Executor
-    Schema --> SC
-    Schema --> PG
-    SC --> PG
-    API --> ST
-    ST --> PG
-    Executor --> PG
-    API --> AppPG
-    UI --> Cache
-```
+![alt text](image.png)
 
 ### Redis Caching Flow
 
