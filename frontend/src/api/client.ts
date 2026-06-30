@@ -1,4 +1,5 @@
 import axios from "axios";
+import { clearAllSchemas } from "@/utils/schemaCache";
 
 const apiClient = axios.create({
   baseURL: "/api/v1",
@@ -20,6 +21,7 @@ apiClient.interceptors.response.use(
       const { status, data } = error.response;
 
       if (status === 401) {
+        clearAllSchemas();
         localStorage.removeItem("token");
         localStorage.removeItem("user");
         window.location.href = "/login";

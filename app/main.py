@@ -5,10 +5,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.core.exceptions import global_exception_handler
+from app.services.redis_client import redis_client
 from app.api.health import router as health_router
 from app.api.auth import router as auth_router
 from app.api.admin import router as admin_router
-from app.api.database_connections import router as db_connections_router
+from app.api.database_connections import router as db_connections_router, shared_router as db_shared_router
 from app.api.permissions import router as permissions_router
 from app.api.schema import router as schema_router
 from app.api.query import router as query_router
@@ -19,7 +20,9 @@ from app.api.audit import router as audit_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
+    await redis_client.initialize()
     yield
+    await redis_client.close()
 
 
 app = FastAPI(
@@ -43,6 +46,7 @@ app.include_router(health_router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")
 app.include_router(db_connections_router, prefix="/api/v1")
+app.include_router(db_shared_router, prefix="/api/v1")
 app.include_router(permissions_router, prefix="/api/v1")
 app.include_router(schema_router, prefix="/api/v1")
 app.include_router(query_router, prefix="/api/v1")

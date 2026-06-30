@@ -15,3 +15,7 @@ class QueryResult(BaseModel):
     status: str
     error: str | None = None
     sql: str | None = None
+    corrected_sql: str | None = None
+    correction_attempts: int = 0
+    original_error: str | None = None
+    friendly_error: str | None = None

@@ -23,12 +23,19 @@ class Settings(BaseSettings):
 
     DB_ENCRYPTION_KEY: str = "your-encryption-key-change-in-production"
 
-    LLM_PROVIDER: str = "mock"
-    LLM_API_KEY: str = ""
-    LLM_API_URL: str = "https://api.openai.com/v1"
-    LLM_MODEL: str = "gpt-4o-mini"
+    LLM_PROVIDER: str = "openai"
     LLM_TEMPERATURE: float = 0.1
     LLM_MAX_TOKENS: int = 1000
+
+    OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-5.1-codex-mini"
+
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
+    REDIS_DB: int = 0
+    REDIS_PASSWORD: str = ""
+    REDIS_TTL_SCHEMA: int = 3600
+    REDIS_TTL_STATUS: int = 60
 
     @property
     def cors_origins_list(self) -> List[str]:

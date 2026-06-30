@@ -4,13 +4,13 @@ from pydantic import BaseModel
 
 
 class AssignPermissionRequest(BaseModel):
-    analyst_id: uuid.UUID
+    user_id: uuid.UUID
     database_connection_id: uuid.UUID
 
 
 class PermissionResponse(BaseModel):
     id: uuid.UUID
-    analyst_id: uuid.UUID
+    user_id: uuid.UUID
     database_connection_id: uuid.UUID
     created_at: datetime
 

@@ -17,8 +17,6 @@ import {
   MarkerType,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useQuery } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { Search, X, Download, ZoomIn, ZoomOut, Maximize, RotateCw, AlertCircle } from "lucide-react";
 import SchemaNode from "./SchemaNode";
 import RelationshipEdge from "./RelationshipEdge";
@@ -26,7 +24,9 @@ import { Legend } from "./Legend";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getSchemaVisualizationApi } from "@/api/connections.api";
+import { getSchemaVisualizationApi, getAnalystSchemaVisualizationApi } from "@/api/connections.api";
+import { useAuth } from "@/contexts/AuthContext";
+import * as schemaCache from "@/utils/schemaCache";
 import type { SchemaVisualization, VisTable } from "@/types";
 
 const NODE_TYPES: NodeTypes = { schemaNode: SchemaNode };
@@ -242,15 +242,48 @@ function Canvas({
 }
 
 export function SchemaViewer({ connectionId, connectionName }: SchemaViewerProps) {
+  const { isAdmin } = useAuth();
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [schema, setSchema] = useState<SchemaVisualization | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isError, setIsError] = useState(false);
 
-  const { data: schema, isLoading, isError, refetch } = useQuery({
-    queryKey: ["schema-visualization", connectionId],
-    queryFn: () => getSchemaVisualizationApi(connectionId),
-    enabled: open,
-    retry: 1,
-  });
+  const loadSchema = useCallback(async () => {
+    const cached = schemaCache.getSchema(connectionId);
+    if (cached) {
+      setSchema(cached);
+      return;
+    }
+
+    setIsLoading(true);
+    setIsError(false);
+
+    try {
+      const fetchFn = isAdmin ? getSchemaVisualizationApi : getAnalystSchemaVisualizationApi;
+      const result = await fetchFn(connectionId);
+      schemaCache.setSchema(connectionId, result);
+      setSchema(result);
+    } catch {
+      setIsError(true);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [connectionId, isAdmin]);
+
+  useEffect(() => {
+    if (open) {
+      loadSchema();
+    } else {
+      setSchema(null);
+      setIsLoading(false);
+      setIsError(false);
+    }
+  }, [open, loadSchema]);
+
+  const handleRetry = useCallback(() => {
+    loadSchema();
+  }, [loadSchema]);
 
   return (
     <>
@@ -299,7 +332,7 @@ export function SchemaViewer({ connectionId, connectionName }: SchemaViewerProps
                 <AlertCircle className="h-12 w-12 text-destructive mx-auto" />
                 <p className="text-lg font-medium">Unable to load schema</p>
                 <p className="text-sm text-muted-foreground">Please verify the database connection.</p>
-                <Button onClick={() => refetch()} variant="outline">
+                <Button onClick={handleRetry} variant="outline">
                   <RotateCw className="h-4 w-4 mr-2" /> Retry
                 </Button>
                 <Button variant="ghost" onClick={() => setOpen(false)}>Close</Button>

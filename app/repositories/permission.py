@@ -1,7 +1,7 @@
 import uuid
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.database_permission import DatabasePermission
+from app.models.user_database_access import UserDatabaseAccess
 from app.models.database_connection import DatabaseConnection
 
 
@@ -9,68 +9,85 @@ class PermissionRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def create(self, permission: DatabasePermission) -> DatabasePermission:
-        self.db.add(permission)
+    async def create(self, access: UserDatabaseAccess) -> UserDatabaseAccess:
+        self.db.add(access)
         await self.db.flush()
-        await self.db.refresh(permission)
-        return permission
+        await self.db.refresh(access)
+        return access
 
-    async def get_by_id(self, permission_id: uuid.UUID) -> DatabasePermission | None:
+    async def get_by_id(self, access_id: uuid.UUID) -> UserDatabaseAccess | None:
         result = await self.db.execute(
-            select(DatabasePermission).where(DatabasePermission.id == permission_id)
+            select(UserDatabaseAccess).where(UserDatabaseAccess.id == access_id)
         )
         return result.scalar_one_or_none()
 
-    async def get_by_analyst_and_connection(
-        self, analyst_id: uuid.UUID, database_connection_id: uuid.UUID
-    ) -> DatabasePermission | None:
+    async def get_by_user_and_connection(
+        self, user_id: uuid.UUID, database_connection_id: uuid.UUID
+    ) -> UserDatabaseAccess | None:
         result = await self.db.execute(
-            select(DatabasePermission).where(
-                DatabasePermission.analyst_id == analyst_id,
-                DatabasePermission.database_connection_id == database_connection_id,
+            select(UserDatabaseAccess).where(
+                UserDatabaseAccess.user_id == user_id,
+                UserDatabaseAccess.database_connection_id == database_connection_id,
             )
         )
         return result.scalar_one_or_none()
 
-    async def list_by_analyst(self, analyst_id: uuid.UUID) -> list[DatabasePermission]:
+    async def list_by_user(self, user_id: uuid.UUID) -> list[UserDatabaseAccess]:
         result = await self.db.execute(
-            select(DatabasePermission)
-            .where(DatabasePermission.analyst_id == analyst_id)
-            .order_by(DatabasePermission.created_at.desc())
+            select(UserDatabaseAccess)
+            .where(UserDatabaseAccess.user_id == user_id)
+            .order_by(UserDatabaseAccess.created_at.desc())
         )
         return list(result.scalars().all())
 
     async def list_by_connection(
         self, database_connection_id: uuid.UUID
-    ) -> list[DatabasePermission]:
+    ) -> list[UserDatabaseAccess]:
         result = await self.db.execute(
-            select(DatabasePermission).where(
-                DatabasePermission.database_connection_id == database_connection_id
+            select(UserDatabaseAccess).where(
+                UserDatabaseAccess.database_connection_id == database_connection_id
             )
         )
         return list(result.scalars().all())
 
-    async def list_all(self) -> list[DatabasePermission]:
+    async def list_all(self) -> list[UserDatabaseAccess]:
         result = await self.db.execute(
-            select(DatabasePermission).order_by(DatabasePermission.created_at.desc())
+            select(UserDatabaseAccess).order_by(UserDatabaseAccess.created_at.desc())
         )
         return list(result.scalars().all())
 
-    async def delete(self, permission: DatabasePermission) -> None:
-        await self.db.delete(permission)
+    async def delete(self, access: UserDatabaseAccess) -> None:
+        await self.db.delete(access)
+        await self.db.flush()
+
+    async def delete_by_user_and_connection(
+        self, user_id: uuid.UUID, database_connection_id: uuid.UUID
+    ) -> None:
+        await self.db.execute(
+            delete(UserDatabaseAccess).where(
+                UserDatabaseAccess.user_id == user_id,
+                UserDatabaseAccess.database_connection_id == database_connection_id,
+            )
+        )
+        await self.db.flush()
+
+    async def delete_by_user(self, user_id: uuid.UUID) -> None:
+        await self.db.execute(
+            delete(UserDatabaseAccess).where(UserDatabaseAccess.user_id == user_id)
+        )
         await self.db.flush()
 
     async def get_assigned_databases(
-        self, analyst_id: uuid.UUID
+        self, user_id: uuid.UUID
     ) -> list[DatabaseConnection]:
         result = await self.db.execute(
             select(DatabaseConnection)
             .join(
-                DatabasePermission,
-                DatabasePermission.database_connection_id == DatabaseConnection.id,
+                UserDatabaseAccess,
+                UserDatabaseAccess.database_connection_id == DatabaseConnection.id,
             )
             .where(
-                DatabasePermission.analyst_id == analyst_id,
+                UserDatabaseAccess.user_id == user_id,
                 DatabaseConnection.is_active == True,
             )
             .order_by(DatabaseConnection.name)

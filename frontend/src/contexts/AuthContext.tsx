@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
 import type { User } from "@/types";
+import { clearAllSchemas } from "@/utils/schemaCache";
 
 interface AuthContextType {
   user: User | null;
@@ -32,6 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
+    clearAllSchemas();
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     setToken(null);

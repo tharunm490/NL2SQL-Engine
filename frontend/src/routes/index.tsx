@@ -11,6 +11,7 @@ import { DatabasesPage } from "@/pages/DatabasesPage";
 import { UsersPage } from "@/pages/UsersPage";
 import { AuditLogsPage } from "@/pages/AuditLogsPage";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { AboutPage } from "@/pages/AboutPage";
 
 export const router = createBrowserRouter([
   {
@@ -33,14 +34,7 @@ export const router = createBrowserRouter([
       { path: "dashboard", element: <DashboardPage /> },
       { path: "query", element: <QueryPage /> },
       { path: "query-history", element: <QueryHistoryPage /> },
-      {
-        path: "databases",
-        element: (
-          <RoleGate roles={["admin"]}>
-            <DatabasesPage />
-          </RoleGate>
-        ),
-      },
+      { path: "databases", element: <DatabasesPage /> },
       {
         path: "users",
         element: (
@@ -57,6 +51,7 @@ export const router = createBrowserRouter([
           </RoleGate>
         ),
       },
+      { path: "about", element: <AboutPage /> },
       { path: "settings", element: <SettingsPage /> },
     ],
   },

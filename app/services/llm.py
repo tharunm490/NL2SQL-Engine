@@ -1,4 +1,6 @@
 import logging
+import time
+import os
 from abc import ABC, abstractmethod
 from openai import OpenAI
 from app.core.config import settings
@@ -14,25 +16,33 @@ class BaseLLMProvider(ABC):
 
 class OpenAIProvider(BaseLLMProvider):
     def __init__(self):
-        self.client = OpenAI(
-            api_key=settings.LLM_API_KEY,
-            base_url=settings.LLM_API_URL,
-        )
-        self.model = settings.LLM_MODEL
+        api_key = os.getenv("OPENAI_API_KEY") or settings.OPENAI_API_KEY
+        self.client = OpenAI(api_key=api_key)
+        self.model = os.getenv("OPENAI_MODEL", settings.OPENAI_MODEL)
         self.temperature = settings.LLM_TEMPERATURE
         self.max_tokens = settings.LLM_MAX_TOKENS
-
     def generate_sql(self, system_prompt: str, user_prompt: str) -> str:
-        response = self.client.chat.completions.create(
+        logger.info("Model: %s", self.model)
+        start = time.time()
+
+        response = self.client.responses.create(
             model=self.model,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            messages=[
+            max_output_tokens=self.max_tokens,
+            input=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
         )
-        sql = response.choices[0].message.content or ""
+        elapsed = time.time() - start
+        usage = response.usage
+        if usage:
+            logger.info(
+                "Model: %s | Prompt Tokens: %s | Completion Tokens: %s | Total Tokens: %s | Execution Time: %.2f sec",
+                self.model, usage.input_tokens, usage.output_tokens, usage.total_tokens, elapsed,
+            )
+        else:
+            logger.info("Model: %s | Execution Time: %.2f sec", self.model, elapsed)
+        sql = response.output_text or ""
         return sql.strip()
 
 

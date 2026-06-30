@@ -46,3 +46,15 @@ class ConnectionResponse(BaseModel):
 class ConnectionTestResult(BaseModel):
     success: bool
     message: str
+
+
+class ConnectionStatusResponse(BaseModel):
+    id: uuid.UUID
+    success: bool
+    status: str = "Inactive"
+    error: str | None = None
+    last_checked: datetime | None = None
+
+
+class BatchStatusRequest(BaseModel):
+    ids: list[uuid.UUID]

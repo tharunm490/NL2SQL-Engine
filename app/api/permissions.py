@@ -4,9 +4,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.schemas.permission import (
-    AssignPermissionRequest,
-    PermissionResponse,
-    AssignedDatabaseResponse,
+    AssignPermissionRequest, PermissionResponse, AssignedDatabaseResponse,
 )
 from app.services.permission import PermissionService
 from app.services.audit import AuditService
@@ -17,12 +15,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Permissions"])
 
 
-@router.post(
-    "/admin/permissions",
-    response_model=PermissionResponse,
-    status_code=201,
-    dependencies=[Depends(require_admin)],
-)
+@router.post("/admin/permissions", response_model=PermissionResponse, status_code=201, dependencies=[Depends(require_admin)])
 async def assign_permission(
     body: AssignPermissionRequest,
     request: Request,
@@ -30,10 +23,7 @@ async def assign_permission(
     admin: User = Depends(require_admin),
 ):
     service = PermissionService(db)
-    perm = await service.assign(
-        analyst_id=body.analyst_id,
-        database_connection_id=body.database_connection_id,
-    )
+    perm = await service.assign(user_id=body.user_id, database_connection_id=body.database_connection_id)
     audit = AuditService(db)
     await audit.log(
         action="permission_assigned",
@@ -41,17 +31,13 @@ async def assign_permission(
         username=admin.username,
         resource_type="permission",
         resource_id=str(perm.id),
-        details=f"Assigned DB {body.database_connection_id} to analyst {body.analyst_id}",
+        details=f"Assigned DB {body.database_connection_id} to user {body.user_id}",
         ip_address=request.client.host if request.client else None,
     )
     return perm
 
 
-@router.delete(
-    "/admin/permissions/{permission_id}",
-    status_code=204,
-    dependencies=[Depends(require_admin)],
-)
+@router.delete("/admin/permissions/{permission_id}", status_code=204, dependencies=[Depends(require_admin)])
 async def remove_permission(
     permission_id: uuid.UUID,
     request: Request,
@@ -71,29 +57,19 @@ async def remove_permission(
     )
 
 
-@router.get(
-    "/admin/permissions",
-    response_model=list[PermissionResponse],
-    dependencies=[Depends(require_admin)],
-)
-async def list_all_permissions(
-    db: AsyncSession = Depends(get_db),
-):
+@router.get("/admin/permissions", response_model=list[PermissionResponse], dependencies=[Depends(require_admin)])
+async def list_all_permissions(db: AsyncSession = Depends(get_db)):
     service = PermissionService(db)
     return await service.list_all()
 
 
-@router.get(
-    "/admin/analysts/{analyst_id}/permissions",
-    response_model=list[PermissionResponse],
-    dependencies=[Depends(require_admin)],
-)
-async def list_analyst_permissions(
-    analyst_id: uuid.UUID,
+@router.get("/admin/users/{user_id}/permissions", response_model=list[PermissionResponse], dependencies=[Depends(require_admin)])
+async def list_user_permissions(
+    user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
 ):
     service = PermissionService(db)
-    return await service.list_by_analyst(analyst_id)
+    return await service.list_by_user(user_id)
 
 
 @router.get("/me/databases", response_model=list[AssignedDatabaseResponse])

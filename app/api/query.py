@@ -1,17 +1,20 @@
 import uuid
 import logging
+import time
+import sqlparse
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.schemas.query import QueryRequest, QueryResult
 from app.services.database_connection import DatabaseConnectionService
 from app.services.query_executor import execute_query
-from app.services.schema_discovery import discover_schema
+from app.services.schema_cache_service import schema_cache_service
 from app.services.permission import PermissionService
 from app.services.history import QueryHistoryService
 from app.services.audit import AuditService
 from app.services.llm import llm_service
 from app.services.validator import validate_sql
+from app.services.formatter import format_success, format_error, friendly_error_message
 from app.prompts.builder import build_prompt
 from app.api.dependencies import get_current_user, require_admin
 from app.models.user import User
@@ -19,6 +22,25 @@ from app.core.exceptions import ForbiddenException, BadRequestException
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Query Execution"])
+
+MAX_RETRIES = 3
+
+
+def format_sql(sql: str) -> str:
+    if not sql:
+        return sql
+    try:
+        formatted = sqlparse.format(
+            sql,
+            reindent=True,
+            keyword_case="upper",
+            identifier_case="lower",
+            strip_comments=False,
+            use_space_around_operators=True,
+        )
+        return formatted.strip()
+    except Exception:
+        return sql.strip()
 
 
 def _extract_first_statement(sql: str) -> str:
@@ -38,41 +60,118 @@ def _extract_first_statement(sql: str) -> str:
     return result.strip()
 
 
-async def _resolve_sql(connection, body: QueryRequest, db: AsyncSession) -> str:
-    if body.sql:
-        return body.sql
-    if not body.question:
-        raise BadRequestException("Either sql or question must be provided")
-    schema = discover_schema(connection)
-    prompt = build_prompt(body.question, schema)
+def _generate_and_validate_sql(
+    connection,
+    schema,
+    question: str,
+    error_context: str | None = None,
+    previous_sql: str | None = None,
+) -> str:
+    prompt = build_prompt(question, schema)
 
-    for attempt in range(2):
-        generated = llm_service.generate_sql(prompt["system"], prompt["user"] if attempt == 0 else retry_prompt)
-        if not generated or not generated.strip():
-            if attempt == 0:
-                raise BadRequestException("LLM failed to generate SQL")
-            raise BadRequestException(f"LLM failed to generate valid SQL: {error_msg}")
-
-        sql = _extract_first_statement(generated)
-        if not sql:
-            if attempt == 0:
-                raise BadRequestException("LLM returned empty query")
-            raise BadRequestException(f"LLM failed to generate valid SQL: {error_msg}")
-
-        validation = validate_sql(sql, schema)
-        if validation.valid:
-            return sql
-
-        logger.warning("Generated SQL failed validation (attempt %d): %s", attempt + 1, validation.errors)
-        error_msg = " | ".join(validation.errors)
-        retry_prompt = (
+    if error_context and previous_sql:
+        user_prompt = (
             prompt["user"]
-            + f"\n\nYour previous query was rejected: {error_msg}. Generate a SINGLE corrected SQL query that follows the rules."
+            + f"\n\nYour previous query had an error:\n{previous_sql}\n\nError: {error_context}\n\nFix only the SQL. Return only the corrected SQL."
+        )
+    else:
+        user_prompt = prompt["user"]
+
+    generated = llm_service.generate_sql(prompt["system"], user_prompt)
+    if not generated or not generated.strip():
+        raise BadRequestException("LLM failed to generate SQL")
+
+    sql = _extract_first_statement(generated)
+    if not sql:
+        raise BadRequestException("LLM returned empty query")
+
+    validation = validate_sql(sql, schema)
+    if not validation.valid:
+        error_msg = " | ".join(validation.errors)
+        logger.warning("Pre-validation failed: %s", error_msg)
+        raise BadRequestException(f"Generated SQL failed validation: {error_msg}")
+
+    return format_sql(sql)
+
+
+async def _execute_with_retry(
+    connection,
+    schema,
+    question: str,
+    db: AsyncSession,
+    initial_sql: str | None = None,
+) -> QueryResult:
+    error_context: str | None = None
+    previous_sql: str | None = initial_sql
+    generation_start = time.time()
+
+    for attempt in range(MAX_RETRIES):
+        sql: str | None = None
+
+        if attempt == 0 and initial_sql:
+            sql = initial_sql
+        else:
+            try:
+                sql = _generate_and_validate_sql(
+                    connection,
+                    schema,
+                    question,
+                    error_context=error_context,
+                    previous_sql=previous_sql,
+                )
+                logger.info(
+                    "SQL generated (attempt %d/%d) | Question: '%s' | SQL: %s",
+                    attempt + 1, MAX_RETRIES, question[:100], sql[:200],
+                )
+            except BadRequestException as e:
+                if attempt + 1 >= MAX_RETRIES:
+                    friendly = friendly_error_message(str(e)) or str(e)
+                    elapsed = time.time() - generation_start
+                    return format_error(
+                        str(e),
+                        correction_attempts=attempt + 1,
+                        friendly_error=friendly,
+                        sql=previous_sql,
+                    )
+                error_context = str(e)
+                continue
+
+        exec_start = time.time()
+        result = execute_query(connection, sql)
+        exec_time = time.time() - exec_start
+        total_time = time.time() - generation_start
+
+        result.execution_time = round(total_time, 4)
+        result.correction_attempts = attempt
+        result.sql = sql
+
+        if result.status == "success":
+            if attempt > 0:
+                result.corrected_sql = sql
+            logger.info(
+                "Query succeeded (attempt %d/%d) | Exec: %.2fs | Rows: %d",
+                attempt + 1, MAX_RETRIES, exec_time, result.row_count,
+            )
+            return result
+
+        logger.warning(
+            "Query failed (attempt %d/%d) | Error: %s | SQL: %s",
+            attempt + 1, MAX_RETRIES, result.error, sql[:200],
         )
 
-    raise BadRequestException(
-        f"Generated SQL still invalid after retry: {'; '.join(validation.errors)}"
-    )
+        if attempt + 1 >= MAX_RETRIES:
+            friendly = friendly_error_message(result.error or "")
+            result.correction_attempts = attempt + 1
+            result.original_error = result.error
+            result.friendly_error = (
+                friendly
+                or "The query could not be executed. Please try rephrasing your question."
+            )
+            logger.info("All retries exhausted | SQL: %s | Error: %s", sql[:200], result.error)
+            return result
+
+        error_context = result.error
+        previous_sql = sql
 
 
 @router.post("/query/execute", response_model=QueryResult)
@@ -90,16 +189,21 @@ async def execute_analyst_query(
 
     conn_service = DatabaseConnectionService(db)
     connection = await conn_service.get_by_id(conn_id)
+    schema = await schema_cache_service.get_schema(conn_id, connection)
 
-    sql = await _resolve_sql(connection, body, db)
-    result = execute_query(connection, sql)
-    result.sql = sql
+    result = await _execute_with_retry(
+        connection,
+        schema,
+        body.question or "",
+        db,
+        initial_sql=body.sql,
+    )
 
     history_service = QueryHistoryService(db)
     await history_service.record(
         user_id=current_user.id,
-        question=body.question,
-        generated_sql=sql,
+        question=body.question or "",
+        generated_sql=result.sql or "",
         database_connection_id=conn_id,
         database_name=connection.name,
         execution_time=result.execution_time,
@@ -114,7 +218,7 @@ async def execute_analyst_query(
         user_id=current_user.id,
         username=current_user.username,
         resource_type="query",
-        details=f"Executed query on '{connection.name}': {sql[:100]}",
+        details=f"Executed query on '{connection.name}': {(result.sql or '')[:100]}",
         ip_address=request.client.host if request.client else None,
         status=result.status,
     )
@@ -132,16 +236,21 @@ async def execute_admin_query(
     conn_id = uuid.UUID(body.database_connection_id)
     conn_service = DatabaseConnectionService(db)
     connection = await conn_service.get_by_id(conn_id)
+    schema = await schema_cache_service.get_schema(conn_id, connection)
 
-    sql = await _resolve_sql(connection, body, db)
-    result = execute_query(connection, sql)
-    result.sql = sql
+    result = await _execute_with_retry(
+        connection,
+        schema,
+        body.question or "",
+        db,
+        initial_sql=body.sql,
+    )
 
     history_service = QueryHistoryService(db)
     await history_service.record(
         user_id=current_user.id,
-        question=body.question,
-        generated_sql=sql,
+        question=body.question or "",
+        generated_sql=result.sql or "",
         database_connection_id=conn_id,
         database_name=connection.name,
         execution_time=result.execution_time,
@@ -156,7 +265,7 @@ async def execute_admin_query(
         user_id=current_user.id,
         username=current_user.username,
         resource_type="query",
-        details=f"Admin query on '{connection.name}': {sql[:100]}",
+        details=f"Admin query on '{connection.name}': {(result.sql or '')[:100]}",
         ip_address=request.client.host if request.client else None,
         status=result.status,
     )

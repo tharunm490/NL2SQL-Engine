@@ -14,3 +14,5 @@ email-validator==2.2.0
 cryptography==44.0.0
 openai==1.59.6
 sqlglot==26.2.5
+sqlparse==0.5.3
+redis==5.2.1

@@ -5,7 +5,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { cn } from "@/utils/cn";
 import {
   LayoutDashboard, Database, Terminal, History, Shield, Users,
-  Settings, LogOut, Sun, Moon,
+  Settings, LogOut, Sun, Moon, Info,
 } from "lucide-react";
 
 const adminLinks = [
@@ -15,13 +15,16 @@ const adminLinks = [
   { icon: Terminal, label: "Query", path: "/query" },
   { icon: History, label: "Query History", path: "/query-history" },
   { icon: Shield, label: "Audit Logs", path: "/audit-logs" },
+  { icon: Info, label: "About", path: "/about" },
   { icon: Settings, label: "Settings", path: "/settings" },
 ];
 
 const analystLinks = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
+  { icon: Database, label: "Databases", path: "/databases" },
   { icon: Terminal, label: "Query", path: "/query" },
   { icon: History, label: "Query History", path: "/query-history" },
+  { icon: Info, label: "About", path: "/about" },
   { icon: Settings, label: "Settings", path: "/settings" },
 ];
 

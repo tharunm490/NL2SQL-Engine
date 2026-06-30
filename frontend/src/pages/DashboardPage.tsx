@@ -1,13 +1,15 @@
+import { useState, useEffect, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getConnectionsApi } from "@/api/connections.api";
+import { getConnectionsApi, getAnalystDatabasesApi, batchCheckStatusApi } from "@/api/connections.api";
 import { getRecentHistoryApi } from "@/api/history.api";
 import { getUsersApi } from "@/api/users.api";
+import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/common/DataTable";
 import { StatCard } from "@/components/common/StatCard";
-import type { QueryHistoryItem, DatabaseConnection } from "@/types";
-import { Database, Users, PlayCircle, Clock, Activity } from "lucide-react";
+import type { QueryHistoryItem, DatabaseConnection, ConnectionStatus } from "@/types";
+import { Database, Users, PlayCircle, Clock, Activity, Wifi } from "lucide-react";
 
 const historyColumns: Column<QueryHistoryItem>[] = [
   {
@@ -38,9 +40,11 @@ const historyColumns: Column<QueryHistoryItem>[] = [
 ];
 
 export function DashboardPage() {
+  const { isAdmin } = useAuth();
+
   const { data: connections, isLoading: connsLoading } = useQuery({
-    queryKey: ["connections"],
-    queryFn: getConnectionsApi,
+    queryKey: isAdmin ? ["connections"] : ["my-databases"],
+    queryFn: isAdmin ? getConnectionsApi : getAnalystDatabasesApi,
   });
 
   const { data: users } = useQuery({
@@ -53,11 +57,35 @@ export function DashboardPage() {
     queryFn: getRecentHistoryApi,
   });
 
+  const [statusMap, setStatusMap] = useState<Record<string, ConnectionStatus>>({});
+
+  const checkStatuses = useCallback(async () => {
+    if (!connections || connections.length === 0) return;
+    try {
+      const statuses = await batchCheckStatusApi(connections.map((c) => c.id));
+      const map: Record<string, ConnectionStatus> = {};
+      statuses.forEach((s) => { map[s.id] = s; });
+      setStatusMap(map);
+    } catch {
+      // silent
+    }
+  }, [connections]);
+
+  useEffect(() => {
+    checkStatuses();
+    const interval = setInterval(checkStatuses, 30000);
+    return () => clearInterval(interval);
+  }, [checkStatuses]);
+
   const analysts = users?.filter((u) => u.role === "analyst" && u.is_active) || [];
   const totalQueries = recentHistory?.length || 0;
   const avgTime = recentHistory && recentHistory.length > 0
     ? recentHistory.reduce((s, q) => s + q.execution_time, 0) / recentHistory.length
     : 0;
+
+  const totalDbs = connections?.length || 0;
+  const healthyDbs = Object.values(statusMap).filter((s) => s.status === "Active").length;
+  const offlineDbs = totalDbs - healthyDbs;
 
   return (
     <div className="space-y-6">
@@ -69,9 +97,15 @@ export function DashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           icon={Database}
-          label="Connected Databases"
-          value={connections?.length}
+          label={isAdmin ? "Connected Databases" : "Assigned Databases"}
+          value={totalDbs}
           isLoading={connsLoading}
+        />
+        <StatCard
+          icon={Activity}
+          label="Healthy"
+          value={healthyDbs}
+          subtitle={`${offlineDbs} offline`}
         />
         <StatCard
           icon={Users}
@@ -83,11 +117,6 @@ export function DashboardPage() {
           label="Executed Queries"
           value={totalQueries}
           subtitle="Recent queries"
-        />
-        <StatCard
-          icon={Clock}
-          label="Avg Response Time"
-          value={avgTime > 0 ? `${avgTime.toFixed(2)}s` : "-"}
         />
       </div>
 
@@ -116,20 +145,21 @@ export function DashboardPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Connected</span>
-                <span className="text-lg font-bold">{connections?.length || 0}</span>
+                <span className="text-sm text-muted-foreground">Total</span>
+                <span className="text-lg font-bold">{totalDbs}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Status</span>
-                <Badge variant={connections && connections.length > 0 ? "success" : "secondary"}>
-                  {connections && connections.length > 0 ? "All Connected" : "No Connections"}
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Health</span>
+                <span className="text-sm text-muted-foreground">Healthy</span>
                 <div className="flex items-center gap-2">
                   <Activity className="h-4 w-4 text-green-500" />
-                  <span className="text-sm text-green-500">Healthy</span>
+                  <span className="text-sm font-medium text-green-500">{healthyDbs}</span>
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Offline</span>
+                <div className="flex items-center gap-2">
+                  <Wifi className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium text-muted-foreground">{offlineDbs}</span>
                 </div>
               </div>
             </CardContent>

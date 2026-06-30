@@ -3,6 +3,7 @@ from urllib.parse import quote
 from sqlalchemy import create_engine, text
 from app.models.database_connection import DatabaseConnection
 from app.utils.encryption import decrypt_password
+from app.schemas.schema import SchemaResponse
 from app.schemas.schema_visualization import (
     SchemaVisualization, VisTable, VisColumn, Relationship,
 )
@@ -18,47 +19,115 @@ def _build_url(connection: DatabaseConnection) -> str:
     )
 
 
-def get_schema_visualization(connection: DatabaseConnection) -> SchemaVisualization:
+def get_schema_visualization(
+    connection: DatabaseConnection,
+    schema: SchemaResponse | None = None,
+) -> SchemaVisualization:
     url = _build_url(connection)
     engine = create_engine(url, pool_pre_ping=True, pool_size=1, max_overflow=0)
 
     try:
         with engine.connect() as conn:
-            tables = _get_tables(conn)
-            columns = _get_all_columns(conn)
-            pk_map = _get_primary_keys(conn)
-            fk_list = _get_foreign_keys(conn)
-            unique_cols = _get_unique_constraints(conn)
-            row_counts = _get_row_counts(conn, tables)
-
-            vis_tables: list[VisTable] = []
-            for tbl in tables:
-                tbl_cols = columns.get(tbl, [])
-                pks = pk_map.get(tbl, set())
-                fks = {fk["from_column"] for fk in fk_list if fk["from_table"] == tbl}
-                vis_columns = [
-                    VisColumn(
-                        name=c["name"],
-                        type=c["type"],
-                        nullable=c["nullable"],
-                        default=c["default"],
-                        primary_key=c["name"] in pks,
-                        foreign_key=c["name"] in fks,
-                    )
-                    for c in tbl_cols
-                ]
-                vis_tables.append(VisTable(
-                    name=tbl,
-                    schema_name="public",
-                    columns=vis_columns,
-                    row_count=row_counts.get(tbl, 0),
-                ))
-
-            relationships = _infer_relationships(fk_list, pk_map, unique_cols, tables)
-
-            return SchemaVisualization(tables=vis_tables, relationships=relationships)
+            if schema:
+                return _build_from_schema(conn, schema)
+            return _build_from_postgres(conn)
     finally:
         engine.dispose()
+
+
+def _build_from_schema(conn, schema: SchemaResponse) -> SchemaVisualization:
+    tables = [t.table_name for t in schema.tables]
+    pk_map: dict[str, set[str]] = {}
+    fk_list: list[dict] = []
+    columns_map: dict[str, list[dict]] = {}
+
+    for table in schema.tables:
+        tbl = table.table_name
+        pk_map[tbl] = {c.column_name for c in table.columns if c.is_primary_key}
+        columns_map[tbl] = [
+            {
+                "name": c.column_name,
+                "type": c.data_type,
+                "nullable": c.is_nullable,
+                "default": c.column_default,
+            }
+            for c in table.columns
+        ]
+        for col in table.columns:
+            if col.is_foreign_key and col.referenced_table and col.referenced_column:
+                fk_list.append({
+                    "from_table": tbl,
+                    "from_column": col.column_name,
+                    "to_table": col.referenced_table,
+                    "to_column": col.referenced_column,
+                })
+
+    unique_cols = _get_unique_constraints(conn)
+    row_counts = _get_row_counts(conn, tables)
+
+    vis_tables: list[VisTable] = []
+    for table in schema.tables:
+        tbl = table.table_name
+        tbl_cols = columns_map.get(tbl, [])
+        pks = pk_map.get(tbl, set())
+        fks = {fk["from_column"] for fk in fk_list if fk["from_table"] == tbl}
+        vis_columns = [
+            VisColumn(
+                name=c["name"],
+                type=c["type"],
+                nullable=c["nullable"],
+                default=c["default"],
+                primary_key=c["name"] in pks,
+                foreign_key=c["name"] in fks,
+            )
+            for c in tbl_cols
+        ]
+        vis_tables.append(VisTable(
+            name=tbl,
+            schema_name="public",
+            columns=vis_columns,
+            row_count=row_counts.get(tbl, 0),
+        ))
+
+    relationships = _infer_relationships(fk_list, pk_map, unique_cols, tables)
+
+    return SchemaVisualization(tables=vis_tables, relationships=relationships)
+
+
+def _build_from_postgres(conn) -> SchemaVisualization:
+    tables = _get_tables(conn)
+    columns = _get_all_columns(conn)
+    pk_map = _get_primary_keys(conn)
+    fk_list = _get_foreign_keys(conn)
+    unique_cols = _get_unique_constraints(conn)
+    row_counts = _get_row_counts(conn, tables)
+
+    vis_tables: list[VisTable] = []
+    for tbl in tables:
+        tbl_cols = columns.get(tbl, [])
+        pks = pk_map.get(tbl, set())
+        fks = {fk["from_column"] for fk in fk_list if fk["from_table"] == tbl}
+        vis_columns = [
+            VisColumn(
+                name=c["name"],
+                type=c["type"],
+                nullable=c["nullable"],
+                default=c["default"],
+                primary_key=c["name"] in pks,
+                foreign_key=c["name"] in fks,
+            )
+            for c in tbl_cols
+        ]
+        vis_tables.append(VisTable(
+            name=tbl,
+            schema_name="public",
+            columns=vis_columns,
+            row_count=row_counts.get(tbl, 0),
+        ))
+
+    relationships = _infer_relationships(fk_list, pk_map, unique_cols, tables)
+
+    return SchemaVisualization(tables=vis_tables, relationships=relationships)
 
 
 def _get_tables(conn) -> list[str]:

@@ -34,6 +34,14 @@ export interface DatabaseConnection {
   created_at: string;
 }
 
+export interface ConnectionStatus {
+  id: string;
+  success: boolean;
+  status: "Active" | "Inactive";
+  error?: string;
+  last_checked?: string;
+}
+
 export interface CreateConnectionPayload {
   name: string;
   host: string;
@@ -109,6 +117,10 @@ export interface QueryResult {
   execution_time: number;
   error?: string;
   sql?: string;
+  corrected_sql?: string;
+  correction_attempts?: number;
+  original_error?: string;
+  friendly_error?: string;
 }
 
 export interface QueryHistoryItem {
@@ -145,9 +157,20 @@ export interface CreateUserPayload {
   role: "admin" | "analyst";
 }
 
+export interface UpdateUserPayload {
+  username: string;
+  email: string;
+  role: "admin" | "analyst";
+  is_active: boolean;
+}
+
 export interface AssignPermissionPayload {
   analyst_id: string;
   database_connection_id: string;
+}
+
+export interface AssignDatabasesPayload {
+  database_ids: string[];
 }
 
 export interface VisColumn {
