@@ -172,6 +172,7 @@ AI SQL Assistant bridges the gap between natural language and database queries. 
 ---
 
 ## 🏗️ System Architecture
+![alt text](image-1.png)
 
 The application runs in Docker with three containers:
 
