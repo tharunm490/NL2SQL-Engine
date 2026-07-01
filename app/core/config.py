@@ -35,11 +35,13 @@ class Settings(BaseSettings):
     REDIS_DB: int = 0
     REDIS_PASSWORD: str = ""
     REDIS_TTL_SCHEMA: int = 3600
-    REDIS_TTL_STATUS: int = 60
+    REDIS_TTL_STATUS: int = 3600
 
     @property
     def cors_origins_list(self) -> List[str]:
         return json.loads(self.CORS_ORIGINS)
+
+    ALLOW_ANALYST_SELF_REGISTRATION: bool = True
 
     model_config = {"env_file": ".env", "case_sensitive": True, "extra": "ignore"}
 

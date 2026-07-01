@@ -2,6 +2,7 @@ import logging
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
+from app.core.config import settings
 from app.schemas.auth import (
     RegisterRequest,
     LoginRequest,
@@ -25,8 +26,11 @@ async def register(
     db: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(get_current_user_optional),
 ):
-    if body.role == "admin" and (not current_user or current_user.role.value != "admin"):
+    if body.role == "admin" and current_user is not None and current_user.role.value != "admin":
         raise ForbiddenException("Only admins can create admin accounts")
+
+    if body.role == "analyst" and not settings.ALLOW_ANALYST_SELF_REGISTRATION:
+        raise ForbiddenException("Analyst self-registration is currently disabled. Contact an administrator.")
 
     service = AuthService(db)
     user = await service.register(

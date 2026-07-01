@@ -44,6 +44,8 @@ def friendly_error_message(error: str) -> str:
         return f'The column "{col}" does not exist. Please check the column name and try again.'
     if "syntax error" in error.lower() or "syntax_error" in error.lower():
         return "There was a syntax error in the generated SQL. The system will attempt to fix it automatically."
+    if "blocked statement" in error.lower():
+        return "You cannot modify the database. Only SELECT queries are allowed."
     if "permission denied" in error.lower():
         return "Permission denied. You may not have access to this database or table."
     if "divide by zero" in error.lower():

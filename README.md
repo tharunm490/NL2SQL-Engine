@@ -173,7 +173,31 @@ AI SQL Assistant bridges the gap between natural language and database queries. 
 
 ## 🏗️ System Architecture
 
-![alt text](image.png)
+The application runs in Docker with three containers:
+
+```
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│   Frontend   │     │   Backend    │     │     Redis    │
+│   (React)    │────▶│  (FastAPI)   │◀───▶│    Stack     │
+│   Port 80    │     │   Port 8000  │     │  Cache Layer │
+└──────────────┘     └──────┬───────┘     └──────────────┘
+                            │
+                            ▼
+                   ┌──────────────────┐
+                   │   Supabase       │
+                   │   PostgreSQL     │
+                   │  (Cloud DB)      │
+                   └──────────────────┘
+```
+
+### Components
+
+| Container | Technology | Purpose |
+|-----------|-----------|---------|
+| **Frontend** | React 19 + Vite + Nginx | SPA served via Nginx reverse proxy |
+| **Backend** | FastAPI + Uvicorn | REST API, SQL generation, validation |
+| **Redis Stack** | Redis Stack 7.4 | Schema cache, connection status cache, RedisInsight UI |
+| **PostgreSQL** | Supabase (managed cloud) | Application database (users, connections, audit logs, query history) — **not running in Docker** |
 
 ### Redis Caching Flow
 
@@ -460,18 +484,35 @@ ucube2/
 
 - Python 3.12+
 - Node.js 20+
-- PostgreSQL 16+
-- Redis Stack 7.4+
-- Docker (optional, for Redis)
+- Redis Stack 7.4+ (or Docker)
+- Docker (recommended, for backend + Redis)
+- A PostgreSQL 14+ instance (Supabase, Neon, AWS RDS, or local) — required for the application database
 
-### 1. Clone the Repository
+### Option A: Docker Compose (Recommended)
+
+The fastest way to run the full stack:
 
 ```bash
+# 1. Clone the repository
 git clone https://github.com/yourusername/ai-sql-assistant.git
 cd ai-sql-assistant
+
+# 2. Configure environment
+cp .env.example .env
+# Edit .env with your settings:
+#   - DATABASE_URL / DATABASE_URL_SYNC → your PostgreSQL connection string
+#   - OPENAI_API_KEY → your OpenAI key
+#   - REDIS_HOST → redis (when using Docker) or localhost (for local dev)
+
+# 3. Start all containers
+docker compose up --build
 ```
 
-### 2. Backend Setup
+The application is now accessible at `http://localhost` (frontend) with the API at `http://localhost:8000`.
+
+### Option B: Local Development
+
+#### 1. Backend Setup
 
 ```bash
 # Create and activate virtual environment
@@ -493,7 +534,7 @@ alembic upgrade head
 uvicorn app.main:app --reload --port 8000
 ```
 
-### 3. Frontend Setup
+#### 2. Frontend Setup
 
 ```bash
 cd frontend
@@ -505,7 +546,7 @@ npm install
 npm run dev
 ```
 
-### 4. Redis Setup (Docker)
+#### 3. Redis Setup (Docker)
 
 ```bash
 docker run -d --name redis-stack \
@@ -516,15 +557,18 @@ docker run -d --name redis-stack \
 
 Redis Stack also provides a web UI at `http://localhost:8001` for monitoring.
 
-### 5. Database Setup
+#### 4. Database Setup
 
-Create the application PostgreSQL database:
+The application database can be any PostgreSQL 14+ instance (Supabase, Neon, AWS RDS, or local).
+
+If using a local PostgreSQL:
 
 ```bash
 createdb ai_sql_assistant
+alembic upgrade head
 ```
 
-Run migrations:
+If using a cloud provider (Supabase, Neon, etc.), set `DATABASE_URL` and `DATABASE_URL_SYNC` in `.env` to the provider's connection string, then run:
 
 ```bash
 alembic upgrade head
@@ -550,6 +594,7 @@ DEBUG=true
 
 # ==========================================
 # Application PostgreSQL Database
+# Can be any PostgreSQL 14+ provider.
 # ==========================================
 DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/ai_sql_assistant
 DATABASE_URL_SYNC=postgresql://postgres:password@localhost:5432/ai_sql_assistant
@@ -591,7 +636,13 @@ OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 OPENAI_MODEL=gpt-5.1-codex-mini
 
 # ==========================================
+# Registration Configuration
+# ==========================================
+ALLOW_ANALYST_SELF_REGISTRATION=true
+
+# ==========================================
 # Redis Configuration
+# When using Docker Compose, REDIS_HOST must be "redis".
 # ==========================================
 REDIS_HOST=localhost
 REDIS_PORT=6379

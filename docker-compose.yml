@@ -1,0 +1,62 @@
+services:
+  redis:
+    image: redis/redis-stack:latest
+    container_name: ucube2-redis
+    ports:
+      - "6379:6379"
+      - "8001:8001"
+    volumes:
+      - redis_data:/data
+    networks:
+      - ucube2-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: ucube2-backend
+    env_file:
+      - .env
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_DB: "0"
+      REDIS_PASSWORD: ""
+      REDIS_TTL_SCHEMA: "3600"
+      REDIS_TTL_STATUS: "3600"
+      CORS_ORIGINS: '["http://localhost:80","http://localhost"]'
+    ports:
+      - "8000:8000"
+    networks:
+      - ucube2-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ucube2-frontend
+    ports:
+      - "80:80"
+    networks:
+      - ucube2-network
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+
+networks:
+  ucube2-network:
+    driver: bridge

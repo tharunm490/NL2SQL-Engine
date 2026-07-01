@@ -9,11 +9,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Terminal } from "lucide-react";
+import { Terminal, AlertCircle } from "lucide-react";
 
 const loginSchema = z.object({
-  username: z.string().min(1, "Username is required"),
-  password: z.string().min(1, "Password is required"),
+  username: z.string().min(1, "Please enter both username and password."),
+  password: z.string().min(1, "Please enter both username and password."),
 });
 
 type LoginForm = z.infer<typeof loginSchema>;
@@ -48,9 +48,18 @@ export function LoginPage() {
       navigate("/dashboard", { replace: true });
     },
     onError: (err) => {
-      toast.error(err.message || "Login failed");
+      toast.error(err.message, {
+        duration: 5000,
+      });
     },
   });
+
+  const getFieldError = (field: "username" | "password") => {
+    if (errors[field]) {
+      return errors[field]?.message;
+    }
+    return undefined;
+  };
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -67,12 +76,23 @@ export function LoginPage() {
           <form onSubmit={handleSubmit((data) => mutation.mutate(data))} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="username">Username</Label>
-              <Input id="username" placeholder="Enter your username" {...register("username")} error={errors.username?.message} />
+              <Input
+                id="username"
+                placeholder="Enter your username"
+                {...register("username")}
+                error={getFieldError("username")}
+              />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" placeholder="Enter your password" {...register("password")} error={errors.password?.message} />
+              <Input
+                id="password"
+                type="password"
+                placeholder="Enter your password"
+                {...register("password")}
+                error={getFieldError("password")}
+              />
             </div>
 
             <Button type="submit" className="w-full" disabled={mutation.isPending}>
@@ -86,7 +106,31 @@ export function LoginPage() {
               Create account
             </Link>
           </p>
+
+          {mutation.isError && (
+            <div className="mt-4 rounded-lg border border-destructive/20 bg-destructive/10 p-3">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                <div className="text-sm text-destructive">
+                  <p>{mutation.error.message}</p>
+                  {mutation.error.message.includes("No account found") && (
+                    <Link
+                      to="/register"
+                      className="mt-1 inline-block font-medium underline underline-offset-2 hover:text-destructive/80"
+                    >
+                      Create Account
+                    </Link>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
+        <p className="mt-4 text-center text-xs text-muted-foreground">
+          <Link to="/" className="hover:text-primary transition-colors">
+            &larr; Back to home
+          </Link>
+        </p>
       </div>
     </div>
   );

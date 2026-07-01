@@ -7,15 +7,35 @@ import { toast } from "sonner";
 import { registerApi } from "@/api/auth.api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Terminal } from "lucide-react";
+import { Terminal, AlertCircle } from "lucide-react";
+
+const ALLOW_ANALYST_SELF_REGISTRATION =
+  import.meta.env.VITE_ALLOW_ANALYST_SELF_REGISTRATION !== "false";
+
+const roleOptions = [
+  { value: "analyst", label: "Analyst" },
+  ...(ALLOW_ANALYST_SELF_REGISTRATION ? [{ value: "admin", label: "Admin" }] : []),
+];
 
 const registerSchema = z
   .object({
-    username: z.string().min(3, "Username must be at least 3 characters"),
-    email: z.string().email("Invalid email address"),
-    password: z.string().min(6, "Password must be at least 6 characters"),
+    username: z
+      .string()
+      .min(3, "Username must be at least 3 characters"),
+    email: z
+      .string()
+      .email("Invalid email format"),
+    password: z
+      .string()
+      .min(6, "Password is too short")
+      .regex(/[A-Z]/, "Password must contain an uppercase letter")
+      .regex(/[a-z]/, "Password must contain a lowercase letter")
+      .regex(/[0-9]/, "Password must contain a number")
+      .regex(/[^A-Za-z0-9]/, "Password must contain a special character"),
     confirmPassword: z.string().min(1, "Please confirm your password"),
+    role: z.enum(["admin", "analyst"]),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords do not match",
@@ -33,6 +53,7 @@ export function RegisterPage() {
     formState: { errors },
   } = useForm<RegisterForm>({
     resolver: zodResolver(registerSchema),
+    defaultValues: { role: "analyst" },
   });
 
   const mutation = useMutation({
@@ -41,13 +62,18 @@ export function RegisterPage() {
         username: data.username,
         email: data.email,
         password: data.password,
+        role: data.role,
       }),
     onSuccess: () => {
-      toast.success("Account created successfully. Please sign in.");
+      toast.success("Account created successfully. Please sign in.", {
+        duration: 5000,
+      });
       navigate("/login", { replace: true });
     },
     onError: (err) => {
-      toast.error(err.message || "Registration failed");
+      toast.error(err.message, {
+        duration: 5000,
+      });
     },
   });
 
@@ -66,19 +92,51 @@ export function RegisterPage() {
           <form onSubmit={handleSubmit((data) => mutation.mutate(data))} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="username">Username</Label>
-              <Input id="username" placeholder="Choose a username" {...register("username")} error={errors.username?.message} />
+              <Input
+                id="username"
+                placeholder="Choose a username"
+                {...register("username")}
+                error={errors.username?.message}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" placeholder="Enter your email" {...register("email")} error={errors.email?.message} />
+              <Input
+                id="email"
+                type="email"
+                placeholder="Enter your email"
+                {...register("email")}
+                error={errors.email?.message}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" placeholder="Create a password" {...register("password")} error={errors.password?.message} />
+              <Input
+                id="password"
+                type="password"
+                placeholder="Create a password"
+                {...register("password")}
+                error={errors.password?.message}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="confirmPassword">Confirm Password</Label>
-              <Input id="confirmPassword" type="password" placeholder="Confirm your password" {...register("confirmPassword")} error={errors.confirmPassword?.message} />
+              <Input
+                id="confirmPassword"
+                type="password"
+                placeholder="Confirm your password"
+                {...register("confirmPassword")}
+                error={errors.confirmPassword?.message}
+              />
+            </div>
+            <div className="space-y-2">
+              <Select
+                id="role"
+                label="Role"
+                options={roleOptions}
+                {...register("role")}
+                error={errors.role?.message}
+              />
             </div>
 
             <Button type="submit" className="w-full" disabled={mutation.isPending}>
@@ -92,7 +150,21 @@ export function RegisterPage() {
               Sign in
             </Link>
           </p>
+
+          {mutation.isError && (
+            <div className="mt-4 rounded-lg border border-destructive/20 bg-destructive/10 p-3">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                <p className="text-sm text-destructive">{mutation.error.message}</p>
+              </div>
+            </div>
+          )}
         </div>
+        <p className="mt-4 text-center text-xs text-muted-foreground">
+          <Link to="/" className="hover:text-primary transition-colors">
+            &larr; Back to home
+          </Link>
+        </p>
       </div>
     </div>
   );

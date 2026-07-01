@@ -14,13 +14,18 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
+const AUTH_ENDPOINTS = ["/auth/login", "/auth/register"];
+
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response) {
       const { status, data } = error.response;
+      const isAuthEndpoint = AUTH_ENDPOINTS.some((ep) =>
+        error.config?.url?.includes(ep)
+      );
 
-      if (status === 401) {
+      if (status === 401 && !isAuthEndpoint) {
         clearAllSchemas();
         localStorage.removeItem("token");
         localStorage.removeItem("user");
@@ -36,7 +41,7 @@ apiClient.interceptors.response.use(
     }
 
     if (error.request) {
-      return Promise.reject(new Error("Network error. Please check your connection."));
+      return Promise.reject(new Error("Unable to connect to the server. Please try again later."));
     }
 
     return Promise.reject(error);
